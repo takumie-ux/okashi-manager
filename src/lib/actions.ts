@@ -5,7 +5,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { resolveUser } from "@/lib/auth";
-import type { Product, CartItem } from "@/lib/types";
+import type { Product, CartItem, PaypayQr } from "@/lib/types";
 
 /** 販売中の商品一覧を取得 */
 export async function getProducts(): Promise<Product[]> {
@@ -14,10 +14,32 @@ export async function getProducts(): Promise<Product[]> {
     .from("products")
     .select("id, name, price, stock, image_url, is_active")
     .eq("is_active", true)
-    .order("created_at", { ascending: true });
+    // created_at が同一でも並びが確定するよう id を第2キーにする（購入後も順序が変わらない）
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
   if (error) throw new Error(error.message);
   return (data ?? []) as Product[];
+}
+
+/** 支払い画面に表示するPayPay受け取りQR（マイコード）を取得 */
+export async function getPaypayQr(): Promise<PaypayQr> {
+  const empty: PaypayQr = { imageDataUrl: null, expiresAt: null };
+  const supabase = createServerSupabase();
+  const { data, error } = await supabase
+    .from("app_settings")
+    .select("key, value")
+    .in("key", ["paypay_qr_image", "paypay_qr_expires"]);
+
+  // テーブル未作成などで失敗しても購入は続行できるよう、QRは無しとして扱う
+  // （DB接続そのものの異常は、並行して呼ぶ getProducts 側で表面化する）
+  if (error) return empty;
+
+  const map = new Map((data ?? []).map((r) => [r.key as string, r.value as string | null]));
+  return {
+    imageDataUrl: map.get("paypay_qr_image") ?? null,
+    expiresAt: map.get("paypay_qr_expires") ?? null,
+  };
 }
 
 /** 購入を確定（在庫減算＋購入記録をアトミックに実施） */

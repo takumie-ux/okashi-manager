@@ -16,7 +16,9 @@ export async function getAdminData(token: string): Promise<AdminData> {
       supabase
         .from("products")
         .select("id, name, price, stock, image_url, is_active")
-        .order("created_at", { ascending: true }),
+        // created_at が同一でも並びが確定するよう id を第2キーにする
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true }),
       supabase
         .from("purchases")
         .select("id, status, total_amount, created_at, user:users(display_name)")
@@ -124,6 +126,35 @@ export async function updateProduct(
 
   const supabase = createServerSupabase();
   const { error } = await supabase.from("products").update(update).eq("id", id);
+  if (error) throw new Error(error.message);
+  return { ok: true };
+}
+
+/** PayPay受け取りQR（マイコード）画像と有効期限を保存（差し替え） */
+export async function setPaypayQr(
+  token: string,
+  imageDataUrl: string,
+  expiresAt: string | null
+) {
+  await requireAdmin(token);
+
+  if (!imageDataUrl.startsWith("data:image/")) {
+    throw new Error("画像を選択してください");
+  }
+  // 巨大なデータを弾く（縮小後は十分小さいはず。約2MB上限）
+  if (imageDataUrl.length > 2_000_000) {
+    throw new Error("画像が大きすぎます。もう一度選び直してください");
+  }
+
+  const now = new Date().toISOString();
+  const supabase = createServerSupabase();
+  const { error } = await supabase.from("app_settings").upsert(
+    [
+      { key: "paypay_qr_image", value: imageDataUrl, updated_at: now },
+      { key: "paypay_qr_expires", value: expiresAt, updated_at: now },
+    ],
+    { onConflict: "key" }
+  );
   if (error) throw new Error(error.message);
   return { ok: true };
 }

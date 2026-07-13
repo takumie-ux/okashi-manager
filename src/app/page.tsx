@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { initAuth } from "@/lib/liff";
-import { getProducts, submitPurchase, markPurchasePaid } from "@/lib/actions";
+import {
+  getProducts,
+  submitPurchase,
+  markPurchasePaid,
+  getPaypayQr,
+} from "@/lib/actions";
 import type { Product } from "@/lib/types";
 
 type Phase = "loading" | "shopping" | "paying" | "done" | "error";
@@ -16,7 +21,8 @@ export default function Home() {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [result, setResult] = useState<{ purchaseId: string; total: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [qrError, setQrError] = useState(false);
+  const [qrImage, setQrImage] = useState<string | null>(null); // PayPay QR画像（data URL）
+  const [confirming, setConfirming] = useState(false); // 「支払いました」の最終確認中か
 
   // 初期化：ログイン → 商品読み込み
   useEffect(() => {
@@ -25,7 +31,9 @@ export default function Home() {
         const auth = await initAuth();
         setToken(auth.token);
         setUserName(auth.name);
-        setProducts(await getProducts());
+        const [prods, qr] = await Promise.all([getProducts(), getPaypayQr()]);
+        setProducts(prods);
+        setQrImage(qr.imageDataUrl);
         setPhase("shopping");
       } catch (e) {
         setErrorMsg(e instanceof Error ? e.message : "初期化に失敗しました");
@@ -79,10 +87,12 @@ export default function Home() {
   const reset = async () => {
     setCart({});
     setResult(null);
-    setQrError(false);
+    setConfirming(false);
     setPhase("loading");
     try {
-      setProducts(await getProducts());
+      const [prods, qr] = await Promise.all([getProducts(), getPaypayQr()]);
+      setProducts(prods);
+      setQrImage(qr.imageDataUrl);
       setPhase("shopping");
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "再読み込みに失敗しました");
@@ -138,22 +148,21 @@ export default function Home() {
         </div>
 
         <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-700">
-          {!qrError ? (
+          {qrImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src="/paypay-qr.png"
+              src={qrImage}
               alt="PayPay受け取りQR"
-              onError={() => setQrError(true)}
               className="mx-auto h-56 w-56 object-contain"
             />
           ) : (
             <div className="mx-auto flex h-56 w-56 items-center justify-center rounded-lg border-2 border-dashed border-gray-300 p-4 text-center text-xs text-gray-400">
               <span>
-                <code>public/paypay-qr.png</code> に
+                管理画面からPayPayの
                 <br />
-                PayPayの受け取りQR画像を
+                受け取りQRを登録すると、
                 <br />
-                置くと、ここに表示されます
+                ここに表示されます
               </span>
             </div>
           )}
@@ -167,16 +176,45 @@ export default function Home() {
           </p>
         </div>
 
-        <button
-          onClick={handlePaid}
-          disabled={submitting}
-          className="rounded-lg bg-emerald-600 py-3 font-semibold text-white disabled:opacity-50"
-        >
-          {submitting ? "処理中..." : "支払いました"}
-        </button>
-        <p className="text-center text-xs text-gray-400">
-          ※「支払いました」を押すと購入が完了します
-        </p>
+        {!confirming ? (
+          <>
+            <button
+              onClick={() => setConfirming(true)}
+              className="rounded-lg bg-emerald-600 py-3 font-semibold text-white"
+            >
+              支払いました
+            </button>
+            <p className="text-center text-xs text-gray-400">
+              ※PayPayでの送金が終わってから押してください
+            </p>
+          </>
+        ) : (
+          <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 dark:bg-emerald-950">
+            <p className="text-center text-sm font-semibold">
+              PayPayで <span className="text-emerald-600">¥{result.total}</span>{" "}
+              の送金は完了しましたか？
+            </p>
+            <p className="mt-1 text-center text-xs text-gray-500">
+              まだの場合は「戻る」を押して、送金してから確定してください。
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => setConfirming(false)}
+                disabled={submitting}
+                className="flex-1 rounded-lg border border-gray-300 py-3 text-sm font-semibold disabled:opacity-50"
+              >
+                まだ／戻る
+              </button>
+              <button
+                onClick={handlePaid}
+                disabled={submitting}
+                className="flex-1 rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {submitting ? "処理中..." : "はい、送金しました"}
+              </button>
+            </div>
+          </div>
+        )}
       </main>
     );
   }

@@ -54,6 +54,15 @@ create table if not exists public.purchase_items (
   unit_price   integer not null check (unit_price >= 0)  -- 購入時点の価格を保存（後で値上げしても履歴が狂わない）
 );
 
+-- ------------------------------------------------------------
+-- app_settings : アプリ設定を key-value で保存（PayPay QR画像・有効期限など）
+-- ------------------------------------------------------------
+create table if not exists public.app_settings (
+  key         text primary key,
+  value       text,
+  updated_at  timestamptz not null default now()
+);
+
 -- インデックス
 create index if not exists idx_purchases_user      on public.purchases(user_id);
 create index if not exists idx_purchases_status    on public.purchases(status);
@@ -68,6 +77,7 @@ alter table public.users          enable row level security;
 alter table public.products       enable row level security;
 alter table public.purchases      enable row level security;
 alter table public.purchase_items enable row level security;
+alter table public.app_settings   enable row level security;
 
 -- ------------------------------------------------------------
 -- create_purchase : 購入をアトミックに作成するRPC関数
