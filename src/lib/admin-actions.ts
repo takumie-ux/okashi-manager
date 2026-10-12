@@ -12,6 +12,60 @@ import type {
   HistoryRow,
 } from "@/lib/types";
 
+type SoldInput = {
+  products: { id: string; sold_reset_at: string | null }[];
+  items: { product_id: string; quantity: number; purchase_id: string }[];
+  purchases: { id: string; created_at: string }[];
+};
+
+/**
+ * 商品IDごとの販売数を数える。
+ * sold_reset_at（最後に補充した日時）より後の購入だけを対象にする。
+ * null の商品は全期間を数える。
+ */
+function calcSoldByProduct({ products, items, purchases }: SoldInput) {
+  const purchasedAt = new Map(purchases.map((p) => [p.id, p.created_at]));
+  const resetAt = new Map(products.map((p) => [p.id, p.sold_reset_at]));
+  const sold: Record<string, number> = {};
+  for (const p of products) sold[p.id] = 0;
+  for (const it of items) {
+    const reset = resetAt.get(it.product_id) ?? null;
+    if (reset) {
+      const at = purchasedAt.get(it.purchase_id);
+      if (!at || at <= reset) continue;
+    }
+    sold[it.product_id] = (sold[it.product_id] ?? 0) + it.quantity;
+  }
+  return sold;
+}
+
+/** リセット対象の商品について、販売数を数えるのに必要なデータをまとめて取る */
+async function loadSoldData(
+  supabase: ReturnType<typeof createServerSupabase>
+) {
+  const [{ data: products, error: pe }, { data: items, error: ie }, { data: purchases, error: qe }] =
+    await Promise.all([
+      supabase.from("products").select("id, stock, sold_reset_at"),
+      supabase.from("purchase_items").select("product_id, quantity, purchase_id"),
+      supabase.from("purchases").select("id, created_at"),
+    ]);
+  if (pe) throw new Error(pe.message);
+  if (ie) throw new Error(ie.message);
+  if (qe) throw new Error(qe.message);
+
+  const list = (products ?? []) as {
+    id: string;
+    stock: number;
+    sold_reset_at: string | null;
+  }[];
+  const sold = calcSoldByProduct({
+    products: list,
+    items: (items ?? []) as SoldInput["items"],
+    purchases: (purchases ?? []) as SoldInput["purchases"],
+  });
+  return { list, sold };
+}
+
 /**
  * 管理ダッシュボードに必要なデータ一式を取得する。
  * 管理者でなければ例外ではなく { ok: false } を返す（画面側で確実に判別するため）。
@@ -46,29 +100,11 @@ export async function getAdminData(token: string): Promise<AdminDataResult> {
   if (qe) throw new Error(qe.message);
   if (ie) throw new Error(ie.message);
 
-  // 販売数は「補充（リセット）した日時より後の購入」だけを数える。
-  // リセットしていない商品（sold_reset_at が null）は全期間を数える。
-  const purchasedAt = new Map(
-    (purchases ?? []).map((p) => [p.id as string, p.created_at as string])
-  );
-  const resetAt = new Map(
-    (products ?? []).map((p) => [
-      p.id as string,
-      (p.sold_reset_at as string | null) ?? null,
-    ])
-  );
-  const soldByProduct: Record<string, number> = {};
-  for (const p of products ?? []) soldByProduct[p.id as string] = 0;
-  for (const it of items ?? []) {
-    const id = it.product_id as string;
-    const reset = resetAt.get(id) ?? null;
-    if (reset) {
-      const at = purchasedAt.get(it.purchase_id as string);
-      // リセット時点より前の購入は数えない
-      if (!at || at <= reset) continue;
-    }
-    soldByProduct[id] = (soldByProduct[id] ?? 0) + (it.quantity as number);
-  }
+  const soldByProduct = calcSoldByProduct({
+    products: (products ?? []) as SoldInput["products"],
+    items: (items ?? []) as SoldInput["items"],
+    purchases: (purchases ?? []) as SoldInput["purchases"],
+  });
 
   let totalPaid = 0;
   let totalUnpaid = 0;
@@ -177,18 +213,29 @@ export async function updateProduct(
 }
 
 /**
- * 販売数のカウンターをリセットする（補充したときに押す）。
- * 現在時刻を記録し、以降の購入だけを数えるようにする。
+ * 補充したときに押す。売れた分を在庫に戻し、販売数を0から数え直す。
+ * 「売れた数だけ買い足した」という前提で在庫を復元する。
  */
 export async function resetSoldCount(token: string, productId: string) {
   await requireAdmin(token);
   const supabase = createServerSupabase();
+
+  const { list, sold } = await loadSoldData(supabase);
+  const product = list.find((p) => p.id === productId);
+  if (!product) throw new Error("商品が見つかりません");
+
+  const added = sold[productId] ?? 0;
+  const now = new Date().toISOString();
   const { error } = await supabase
     .from("products")
-    .update({ sold_reset_at: new Date().toISOString() })
+    .update({
+      stock: product.stock + added,
+      sold_reset_at: now,
+      updated_at: now,
+    })
     .eq("id", productId);
   if (error) throw new Error(error.message);
-  return { ok: true };
+  return { added, stock: product.stock + added };
 }
 
 /**
@@ -198,13 +245,33 @@ export async function resetSoldCount(token: string, productId: string) {
 export async function resetAllSoldCounts(token: string) {
   await requireAdmin(token);
   const supabase = createServerSupabase();
-  // Supabase は WHERE 句なしの一括更新を受け付けないため、全件に当たる条件を置く
-  const { error, count } = await supabase
-    .from("products")
-    .update({ sold_reset_at: new Date().toISOString() }, { count: "exact" })
-    .not("id", "is", null);
-  if (error) throw new Error(error.message);
-  return { reset: count ?? 0 };
+
+  const { list, sold } = await loadSoldData(supabase);
+  const now = new Date().toISOString();
+
+  // 商品ごとに戻す数が違うので1件ずつ更新する（商品数は多くない）
+  const results = await Promise.all(
+    list.map((p) => {
+      const added = sold[p.id] ?? 0;
+      return supabase
+        .from("products")
+        .update({
+          stock: p.stock + added,
+          sold_reset_at: now,
+          updated_at: now,
+        })
+        .eq("id", p.id)
+        .then(({ error }) => ({ error, added }));
+    })
+  );
+
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw new Error(failed.error.message);
+
+  return {
+    reset: results.length,
+    added: results.reduce((s, r) => s + r.added, 0),
+  };
 }
 
 /**

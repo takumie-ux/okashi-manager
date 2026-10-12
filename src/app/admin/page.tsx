@@ -97,27 +97,29 @@ export default function AdminPage() {
           <button
             onClick={async () => {
               const ok = window.confirm(
-                "すべての商品の販売数を0から数え直します。\n\n" +
-                  "買い出しで一通り補充したあとに押してください。\n" +
-                  "在庫数と購入履歴はそのまま残ります。"
+                "すべての商品を補充したものとして処理します。\n\n" +
+                  "売れた分をそれぞれの在庫に戻し、販売数を0にします。\n" +
+                  "購入履歴はそのまま残ります。\n\n" +
+                  "よろしいですか？"
               );
               if (!ok) return;
               try {
                 const r = await resetAllSoldCounts(token);
-                setMsg(`${r.reset}件の商品の販売数をリセットしました`);
+                setMsg(
+                  `${r.reset}件の商品をリセットしました（在庫に合計${r.added}個を戻しました）`
+                );
                 reload();
               } catch (e) {
                 setMsg(e instanceof Error ? e.message : String(e));
               }
             }}
             className="whitespace-nowrap rounded border border-gray-300 px-2 py-1 text-xs text-gray-500 dark:border-gray-600"
-            title="すべての商品の販売数を0から数え直します"
+            title="売れた分をそれぞれの在庫に戻し、販売数を0にします"
           >
             すべてリセット
           </button>
         </div>
-        <AddProductForm token={token} onDone={reload} />
-        <ul className="mt-3 flex flex-col gap-2">
+        <ul className="flex flex-col gap-2">
           {data.products.map((p) => (
             <ProductRow
               key={p.id}
@@ -128,6 +130,9 @@ export default function AdminPage() {
             />
           ))}
         </ul>
+        <div className="mt-3">
+          <AddProductForm token={token} onDone={reload} />
+        </div>
       </section>
 
       {/* 未払い一覧 */}
@@ -405,10 +410,13 @@ function ProductRow({
     }
   };
 
-  // 補充したときに押す。以降の購入だけを数え直す
+  // 補充したときに押す。売れた分を在庫に戻し、販売数を数え直す
   const resetSold = async () => {
     const ok = window.confirm(
-      `${product.name} の販売数を0から数え直します。\n補充したときに押してください。`
+      `${product.name} を補充したものとして処理します。\n\n` +
+        `在庫  ${product.stock} → ${product.stock + sold}（売れた ${sold} 個を戻す）\n` +
+        `販売数  ${sold} → 0\n\n` +
+        `よろしいですか？`
     );
     if (!ok) return;
     setBusy(true);
@@ -468,7 +476,7 @@ function ProductRow({
         </p>
         <div className="flex items-center gap-2">
           <span className="whitespace-nowrap text-xs text-gray-500">
-            {product.sold_reset_at ? "補充後" : "累計"}{" "}
+            累計{" "}
             <span className="font-semibold text-gray-700 dark:text-gray-300">
               {sold}
             </span>{" "}
@@ -478,7 +486,7 @@ function ProductRow({
             onClick={resetSold}
             disabled={busy}
             className="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-500 dark:border-gray-600"
-            title="補充したときに押すと、販売数を0から数え直します"
+            title="補充したときに押すと、売れた分を在庫に戻して販売数を0にします"
           >
             リセット
           </button>
