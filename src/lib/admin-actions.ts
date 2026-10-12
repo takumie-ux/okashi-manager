@@ -303,6 +303,22 @@ export async function deleteProduct(
 }
 
 /**
+ * 未払いの購入をまとめて回収済みにする。
+ * 全員分の入金を確認できたときに使う。
+ */
+export async function markAllPaid(token: string) {
+  await requireAdmin(token);
+  const supabase = createServerSupabase();
+  const now = new Date().toISOString();
+  const { error, count } = await supabase
+    .from("purchases")
+    .update({ status: "paid", paid_at: now }, { count: "exact" })
+    .eq("status", "unpaid");
+  if (error) throw new Error(error.message);
+  return { paid: count ?? 0 };
+}
+
+/**
  * 回収済みの購入記録をまとめて削除する。
  * 未払いは取り立てに必要なので残す（個別の ✕ で消せる）。
  */

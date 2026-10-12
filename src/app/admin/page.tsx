@@ -12,6 +12,7 @@ import {
   deleteProduct,
   resetSoldCount,
   resetAllSoldCounts,
+  markAllPaid,
 } from "@/lib/admin-actions";
 import type { AdminData, Product } from "@/lib/types";
 
@@ -137,12 +138,38 @@ export default function AdminPage() {
 
       {/* 未払い一覧 */}
       <section>
-        <h2 className="mb-2 font-bold">
-          未払い一覧{" "}
-          <span className="text-sm font-normal text-gray-500">
-            （{data.unpaid.length}件）
-          </span>
-        </h2>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="font-bold">
+            未払い一覧{" "}
+            <span className="text-sm font-normal text-gray-500">
+              （{data.unpaid.length}件）
+            </span>
+          </h2>
+          {data.unpaid.length > 0 && (
+            <button
+              onClick={async () => {
+                const ok = window.confirm(
+                  `未払い ${data.unpaid.length}件（合計 ¥${data.stats.totalUnpaid}）を` +
+                    `すべて回収済みにします。\n\n` +
+                    `入金をすべて確認してから押してください。\n` +
+                    `間違えた場合は購入履歴の「済 ⟲」で戻せます。`
+                );
+                if (!ok) return;
+                try {
+                  const r = await markAllPaid(token);
+                  setMsg(`${r.paid}件を回収済みにしました`);
+                  reload();
+                } catch (e) {
+                  setMsg(e instanceof Error ? e.message : String(e));
+                }
+              }}
+              className="whitespace-nowrap rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white"
+              title="未払いをすべて回収済みにします"
+            >
+              すべて回収済みに
+            </button>
+          )}
+        </div>
         {data.unpaid.length === 0 ? (
           <p className="text-sm text-gray-500">未払いはありません 🎉</p>
         ) : (
