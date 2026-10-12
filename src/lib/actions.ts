@@ -44,6 +44,17 @@ export async function submitPurchase(token: string, items: CartItem[]) {
   };
 }
 
+/**
+ * ログイン中の本人が管理者かどうかを返す。
+ * 購入画面に管理画面への導線を出すかどうかの判定だけに使う。
+ * 実際の権限チェックはサーバー側（requireAdmin / getAdminData）で行うため、
+ * この値がクライアントに渡っても権限昇格にはつながらない。
+ */
+export async function getMyRole(token: string): Promise<{ isAdmin: boolean }> {
+  const user = await resolveUser(token);
+  return { isAdmin: user.is_admin };
+}
+
 // 支払い状態の更新は管理者のみが行う（admin-actions.ts の setPurchasePaid）。
 // 集金は管理画面の未払い一覧を見て、管理者がLINEで催促する運用のため、
 // 購入者側から「支払いました」と自己申告する導線は持たない。

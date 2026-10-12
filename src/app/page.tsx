@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { initAuth } from "@/lib/liff";
-import { getProducts, submitPurchase } from "@/lib/actions";
+import { getProducts, submitPurchase, getMyRole } from "@/lib/actions";
 import type { Product } from "@/lib/types";
 
 // 支払いはアプリ内では行わない。購入を記録するところまでが購入者の操作で、
@@ -18,6 +19,7 @@ export default function Home() {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [result, setResult] = useState<{ purchaseId: string; total: number } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false); // 管理画面への導線を出すかどうか
 
   // 初期化：ログイン → 商品読み込み
   useEffect(() => {
@@ -26,7 +28,12 @@ export default function Home() {
         const auth = await initAuth();
         setToken(auth.token);
         setUserName(auth.name);
-        setProducts(await getProducts());
+        const [prods, role] = await Promise.all([
+          getProducts(),
+          getMyRole(auth.token),
+        ]);
+        setProducts(prods);
+        setIsAdmin(role.isAdmin);
         setPhase("shopping");
       } catch (e) {
         setErrorMsg(e instanceof Error ? e.message : "初期化に失敗しました");
@@ -128,6 +135,14 @@ export default function Home() {
       <header className="py-3 text-center">
         <h1 className="text-xl font-bold">🍪 お菓子コーナー</h1>
         <p className="mt-1 text-xs text-gray-500">ようこそ、{userName} さん</p>
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className="mt-2 inline-block rounded-full border border-emerald-300 px-3 py-1 text-xs text-emerald-600"
+          >
+            🔧 管理画面へ
+          </Link>
+        )}
       </header>
 
       {products.length === 0 ? (
