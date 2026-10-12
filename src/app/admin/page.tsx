@@ -123,7 +123,9 @@ export default function AdminPage() {
         <ul className="flex flex-col gap-2">
           {data.products.map((p) => (
             <ProductRow
-              key={p.id}
+              // 価格・在庫が変わったら作り直して入力欄に反映させる。
+              // リセットで在庫が増えても古い値が残り、保存で巻き戻る問題を防ぐ
+              key={`${p.id}:${p.price}:${p.stock}`}
               product={p}
               sold={data.soldByProduct[p.id] ?? 0}
               token={token}
@@ -399,6 +401,8 @@ function ProductRow({
   token: string;
   onDone: () => void;
 }) {
+  // 入力欄の初期値はマウント時にだけ評価される。サーバー側で価格や在庫が
+  // 変わったときは、呼び出し側が key を変えてこの行を貼り直す（下の key を参照）。
   const [price, setPrice] = useState(String(product.price));
   const [stock, setStock] = useState(String(product.stock));
   const [busy, setBusy] = useState(false);
