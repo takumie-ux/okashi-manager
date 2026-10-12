@@ -192,6 +192,22 @@ export async function resetSoldCount(token: string, productId: string) {
 }
 
 /**
+ * すべての商品の販売数カウンターをまとめてリセットする。
+ * 買い出しで一通り補充したときに使う。
+ */
+export async function resetAllSoldCounts(token: string) {
+  await requireAdmin(token);
+  const supabase = createServerSupabase();
+  // Supabase は WHERE 句なしの一括更新を受け付けないため、全件に当たる条件を置く
+  const { error, count } = await supabase
+    .from("products")
+    .update({ sold_reset_at: new Date().toISOString() }, { count: "exact" })
+    .not("id", "is", null);
+  if (error) throw new Error(error.message);
+  return { reset: count ?? 0 };
+}
+
+/**
  * 商品を削除する。購入履歴から参照されている商品は消せない
  * （履歴の整合性が壊れるため）。その場合は販売停止で対応してもらう。
  */

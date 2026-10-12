@@ -11,6 +11,7 @@ import {
   deletePaidPurchases,
   deleteProduct,
   resetSoldCount,
+  resetAllSoldCounts,
 } from "@/lib/admin-actions";
 import type { AdminData, Product } from "@/lib/types";
 
@@ -91,7 +92,30 @@ export default function AdminPage() {
 
       {/* 商品管理 */}
       <section>
-        <h2 className="mb-2 font-bold">商品管理</h2>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="font-bold">商品管理</h2>
+          <button
+            onClick={async () => {
+              const ok = window.confirm(
+                "すべての商品の販売数を0から数え直します。\n\n" +
+                  "買い出しで一通り補充したあとに押してください。\n" +
+                  "在庫数と購入履歴はそのまま残ります。"
+              );
+              if (!ok) return;
+              try {
+                const r = await resetAllSoldCounts(token);
+                setMsg(`${r.reset}件の商品の販売数をリセットしました`);
+                reload();
+              } catch (e) {
+                setMsg(e instanceof Error ? e.message : String(e));
+              }
+            }}
+            className="whitespace-nowrap rounded border border-gray-300 px-2 py-1 text-xs text-gray-500 dark:border-gray-600"
+            title="すべての商品の販売数を0から数え直します"
+          >
+            すべてリセット
+          </button>
+        </div>
         <AddProductForm token={token} onDone={reload} />
         <ul className="mt-3 flex flex-col gap-2">
           {data.products.map((p) => (
