@@ -27,6 +27,7 @@ create table if not exists public.products (
   stock       integer not null default 0 check (stock >= 0), -- 在庫数
   image_url   text,                                  -- 商品画像（任意）
   is_active   boolean not null default true,         -- 販売中フラグ
+  sold_reset_at timestamptz,                           -- 補充した日時。販売数はこれ以降の購入だけを数える
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );

@@ -6,6 +6,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { requireAdmin, resolveUser } from "@/lib/auth";
 import type {
   AdminDataResult,
+  DeleteProductResult,
   Product,
   UnpaidRow,
   HistoryRow,
@@ -29,7 +30,7 @@ export async function getAdminData(token: string): Promise<AdminDataResult> {
   ] = await Promise.all([
       supabase
         .from("products")
-        .select("id, name, price, stock, image_url, is_active")
+        .select("id, name, price, stock, image_url, is_active, sold_reset_at")
         // created_at が同一でも並びが確定するよう id を第2キーにする
         .order("created_at", { ascending: true })
         .order("id", { ascending: true }),
@@ -37,17 +38,35 @@ export async function getAdminData(token: string): Promise<AdminDataResult> {
         .from("purchases")
         .select("id, status, total_amount, created_at, user:users(display_name)")
         .order("created_at", { ascending: false }),
-      // 商品ごとの累計販売数を出すための明細。件数が多くないので全件取って集計する
-      supabase.from("purchase_items").select("product_id, quantity"),
+      // 商品ごとの販売数を出すための明細。件数が多くないので全件取って集計する
+      supabase.from("purchase_items").select("product_id, quantity, purchase_id"),
     ]);
 
   if (pe) throw new Error(pe.message);
   if (qe) throw new Error(qe.message);
   if (ie) throw new Error(ie.message);
 
+  // 販売数は「補充（リセット）した日時より後の購入」だけを数える。
+  // リセットしていない商品（sold_reset_at が null）は全期間を数える。
+  const purchasedAt = new Map(
+    (purchases ?? []).map((p) => [p.id as string, p.created_at as string])
+  );
+  const resetAt = new Map(
+    (products ?? []).map((p) => [
+      p.id as string,
+      (p.sold_reset_at as string | null) ?? null,
+    ])
+  );
   const soldByProduct: Record<string, number> = {};
+  for (const p of products ?? []) soldByProduct[p.id as string] = 0;
   for (const it of items ?? []) {
     const id = it.product_id as string;
+    const reset = resetAt.get(id) ?? null;
+    if (reset) {
+      const at = purchasedAt.get(it.purchase_id as string);
+      // リセット時点より前の購入は数えない
+      if (!at || at <= reset) continue;
+    }
     soldByProduct[id] = (soldByProduct[id] ?? 0) + (it.quantity as number);
   }
 
@@ -155,6 +174,64 @@ export async function updateProduct(
   const { error } = await supabase.from("products").update(update).eq("id", id);
   if (error) throw new Error(error.message);
   return { ok: true };
+}
+
+/**
+ * 販売数のカウンターをリセットする（補充したときに押す）。
+ * 現在時刻を記録し、以降の購入だけを数えるようにする。
+ */
+export async function resetSoldCount(token: string, productId: string) {
+  await requireAdmin(token);
+  const supabase = createServerSupabase();
+  const { error } = await supabase
+    .from("products")
+    .update({ sold_reset_at: new Date().toISOString() })
+    .eq("id", productId);
+  if (error) throw new Error(error.message);
+  return { ok: true };
+}
+
+/**
+ * 商品を削除する。購入履歴から参照されている商品は消せない
+ * （履歴の整合性が壊れるため）。その場合は販売停止で対応してもらう。
+ */
+export async function deleteProduct(
+  token: string,
+  productId: string
+): Promise<DeleteProductResult> {
+  await requireAdmin(token);
+  const supabase = createServerSupabase();
+
+  const { count, error: ce } = await supabase
+    .from("purchase_items")
+    .select("id", { count: "exact", head: true })
+    .eq("product_id", productId);
+  if (ce) throw new Error(ce.message);
+  if ((count ?? 0) > 0) {
+    return { ok: false, reason: "has_history" };
+  }
+
+  const { error } = await supabase
+    .from("products")
+    .delete()
+    .eq("id", productId);
+  if (error) throw new Error(error.message);
+  return { ok: true };
+}
+
+/**
+ * 回収済みの購入記録をまとめて削除する。
+ * 未払いは取り立てに必要なので残す（個別の ✕ で消せる）。
+ */
+export async function deletePaidPurchases(token: string) {
+  await requireAdmin(token);
+  const supabase = createServerSupabase();
+  const { error, count } = await supabase
+    .from("purchases")
+    .delete({ count: "exact" })
+    .eq("status", "paid");
+  if (error) throw new Error(error.message);
+  return { deleted: count ?? 0 };
 }
 
 /**

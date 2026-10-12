@@ -8,6 +8,9 @@ import {
   updateProduct,
   setPurchasePaid,
   deletePurchase,
+  deletePaidPurchases,
+  deleteProduct,
+  resetSoldCount,
 } from "@/lib/admin-actions";
 import type { AdminData, Product } from "@/lib/types";
 
@@ -146,7 +149,31 @@ export default function AdminPage() {
 
       {/* 購入履歴 */}
       <section>
-        <h2 className="mb-2 font-bold">購入履歴（最新30件）</h2>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="font-bold">購入履歴（最新30件）</h2>
+          <button
+            onClick={async () => {
+              const ok = window.confirm(
+                "回収済みの購入記録をすべて削除します。\n\n" +
+                  "未払いの記録は残ります。在庫は戻りません。\n" +
+                  "削除した分は販売数からも差し引かれます。\n\n" +
+                  "元に戻せません。よろしいですか？"
+              );
+              if (!ok) return;
+              try {
+                const r = await deletePaidPurchases(token);
+                setMsg(`回収済みの記録を${r.deleted}件削除しました`);
+                reload();
+              } catch (e) {
+                setMsg(e instanceof Error ? e.message : String(e));
+              }
+            }}
+            className="whitespace-nowrap rounded border border-gray-300 px-2 py-1 text-xs text-gray-500 dark:border-gray-600"
+            title="回収済みの記録をまとめて削除します（未払いは残ります）"
+          >
+            回収済みを一括削除
+          </button>
+        </div>
         {data.history.length === 0 ? (
           <p className="text-sm text-gray-500">まだ購入がありません。</p>
         ) : (
@@ -354,6 +381,47 @@ function ProductRow({
     }
   };
 
+  // 補充したときに押す。以降の購入だけを数え直す
+  const resetSold = async () => {
+    const ok = window.confirm(
+      `${product.name} の販売数を0から数え直します。\n補充したときに押してください。`
+    );
+    if (!ok) return;
+    setBusy(true);
+    setErr("");
+    try {
+      await resetSoldCount(token, product.id);
+      onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    const ok = window.confirm(
+      `${product.name} を削除します。元に戻せません。\nよろしいですか？`
+    );
+    if (!ok) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const res = await deleteProduct(token, product.id);
+      if (!res.ok) {
+        setErr(
+          "この商品には購入履歴があるため削除できません。販売停止にするか、先に履歴を削除してください。"
+        );
+        return;
+      }
+      onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <li
       className={`rounded-xl border p-3 ${
@@ -374,18 +442,39 @@ function ProductRow({
             <span className="ml-2 text-xs text-gray-500">（停止中）</span>
           )}
         </p>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <span className="whitespace-nowrap text-xs text-gray-500">
-            累計 <span className="font-semibold text-gray-700 dark:text-gray-300">{sold}</span> 個
+            {product.sold_reset_at ? "補充後" : "累計"}{" "}
+            <span className="font-semibold text-gray-700 dark:text-gray-300">
+              {sold}
+            </span>{" "}
+            個
           </span>
           <button
-            onClick={toggleActive}
+            onClick={resetSold}
             disabled={busy}
-            className="text-xs text-gray-500 underline"
+            className="rounded border border-gray-300 px-1.5 py-0.5 text-xs text-gray-500 dark:border-gray-600"
+            title="補充したときに押すと、販売数を0から数え直します"
           >
-            {product.is_active ? "販売停止" : "再開"}
+            リセット
           </button>
         </div>
+      </div>
+      <div className="mt-1 flex justify-end gap-3">
+        <button
+          onClick={toggleActive}
+          disabled={busy}
+          className="text-xs text-gray-500 underline"
+        >
+          {product.is_active ? "販売停止" : "再開"}
+        </button>
+        <button
+          onClick={remove}
+          disabled={busy}
+          className="text-xs text-red-500 underline"
+        >
+          削除
+        </button>
       </div>
       <div className="mt-2 flex items-end gap-2">
         <label className="flex-1 text-xs text-gray-500">

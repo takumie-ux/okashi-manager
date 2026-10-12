@@ -7,6 +7,8 @@ export type Product = {
   stock: number;
   image_url: string | null;
   is_active: boolean;
+  // 補充した日時。販売数はこれ以降の購入だけを数える（null なら全期間）
+  sold_reset_at: string | null;
 };
 
 // 購入時にサーバー（RPC）へ渡す明細。キー名はDB関数の期待に合わせる。
@@ -35,7 +37,7 @@ export type HistoryRow = UnpaidRow & { status: "unpaid" | "paid" };
 
 export type AdminData = {
   products: Product[];
-  // 商品IDごとの累計販売数。購入履歴を数えなくても補充量を判断できるようにする。
+  // 商品IDごとの販売数。補充（リセット）以降の購入だけを数える。
   // 購入記録を削除するとその分は差し引かれる。
   soldByProduct: Record<string, number>;
   stats: {
@@ -55,3 +57,9 @@ export type AdminData = {
 export type AdminDataResult =
   | { ok: true; data: AdminData }
   | { ok: false; reason: "forbidden" };
+
+// 商品削除の結果。購入履歴が残っている商品は消せない。
+// 本番ビルドでは例外メッセージがクライアントに届かないため戻り値で返す。
+export type DeleteProductResult =
+  | { ok: true }
+  | { ok: false; reason: "has_history" };
