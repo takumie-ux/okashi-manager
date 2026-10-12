@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "お菓子管理",
-  description: "研究室のお菓子をQR＋PayPayで管理するアプリ",
+  description: "研究室のお菓子の購入記録と在庫を管理するアプリ",
 };
 
 export default function RootLayout({

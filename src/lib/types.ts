@@ -15,12 +15,6 @@ export type CartItem = {
   quantity: number;
 };
 
-// PayPay受け取りQR（マイコード）の設定。画像はdata URL文字列で保存する。
-export type PaypayQr = {
-  imageDataUrl: string | null;
-  expiresAt: string | null; // 'YYYY-MM-DD'。未設定ならnull
-};
-
 export type AppUser = {
   id: string;
   line_user_id: string;

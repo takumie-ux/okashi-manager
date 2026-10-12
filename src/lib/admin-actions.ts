@@ -130,35 +130,6 @@ export async function updateProduct(
   return { ok: true };
 }
 
-/** PayPay受け取りQR（マイコード）画像と有効期限を保存（差し替え） */
-export async function setPaypayQr(
-  token: string,
-  imageDataUrl: string,
-  expiresAt: string | null
-) {
-  await requireAdmin(token);
-
-  if (!imageDataUrl.startsWith("data:image/")) {
-    throw new Error("画像を選択してください");
-  }
-  // 巨大なデータを弾く（縮小後は十分小さいはず。約2MB上限）
-  if (imageDataUrl.length > 2_000_000) {
-    throw new Error("画像が大きすぎます。もう一度選び直してください");
-  }
-
-  const now = new Date().toISOString();
-  const supabase = createServerSupabase();
-  const { error } = await supabase.from("app_settings").upsert(
-    [
-      { key: "paypay_qr_image", value: imageDataUrl, updated_at: now },
-      { key: "paypay_qr_expires", value: expiresAt, updated_at: now },
-    ],
-    { onConflict: "key" }
-  );
-  if (error) throw new Error(error.message);
-  return { ok: true };
-}
-
 /** 購入の支払い状態を管理者が手動で切り替える（回収確認・取り消し用） */
 export async function setPurchasePaid(
   token: string,
