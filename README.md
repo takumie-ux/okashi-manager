@@ -9,6 +9,15 @@
 ![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3FCF8E?logo=supabase&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
 
+## 画面
+
+| 購入画面（購入者） | 管理画面（管理者） |
+|:---:|:---:|
+| <img src="docs/images/purchase.png" width="300" alt="購入画面"> | <img src="docs/images/admin.png" width="300" alt="管理画面"> |
+
+QRコードから開いて商品を選ぶ画面（左）と、売上・在庫・未払いを管理する画面（右）。<br>
+※ スクリーンショットはサンプルデータです。
+
 ## 背景
 
 お菓子コーナーの運用には3つの課題がありました。
