@@ -3,12 +3,23 @@
 // 管理者専用のサーバー処理。各アクションの先頭で requireAdmin により権限確認する。
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/auth";
-import type { AdminData, Product, UnpaidRow, HistoryRow } from "@/lib/types";
+import { requireAdmin, resolveUser } from "@/lib/auth";
+import type {
+  AdminDataResult,
+  Product,
+  UnpaidRow,
+  HistoryRow,
+} from "@/lib/types";
 
-/** 管理ダッシュボードに必要なデータ一式を取得 */
-export async function getAdminData(token: string): Promise<AdminData> {
-  await requireAdmin(token);
+/**
+ * 管理ダッシュボードに必要なデータ一式を取得する。
+ * 管理者でなければ例外ではなく { ok: false } を返す（画面側で確実に判別するため）。
+ */
+export async function getAdminData(token: string): Promise<AdminDataResult> {
+  const user = await resolveUser(token);
+  if (!user.is_admin) {
+    return { ok: false, reason: "forbidden" };
+  }
   const supabase = createServerSupabase();
 
   const [{ data: products, error: pe }, { data: purchases, error: qe }] =
@@ -63,15 +74,18 @@ export async function getAdminData(token: string): Promise<AdminData> {
   const totalStock = productList.reduce((s, x) => s + x.stock, 0);
 
   return {
-    products: productList,
-    stats: {
-      totalPaid,
-      totalUnpaid,
-      productCount: productList.length,
-      totalStock,
+    ok: true,
+    data: {
+      products: productList,
+      stats: {
+        totalPaid,
+        totalUnpaid,
+        productCount: productList.length,
+        totalStock,
+      },
+      unpaid,
+      history: history.slice(0, 30),
     },
-    unpaid,
-    history: history.slice(0, 30),
   };
 }
 

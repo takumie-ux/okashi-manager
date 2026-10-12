@@ -21,7 +21,13 @@ export default function AdminPage() {
   const [msg, setMsg] = useState("");
 
   const load = async (tk: string) => {
-    setData(await getAdminData(tk));
+    const res = await getAdminData(tk);
+    if (!res.ok) {
+      // 権限なし。例外ではなく戻り値で判定するので、本番ビルドでも確実に出し分けできる
+      setPhase("unauthorized");
+      return;
+    }
+    setData(res.data);
     setPhase("ready");
   };
 
@@ -32,12 +38,8 @@ export default function AdminPage() {
         setToken(auth.token);
         await load(auth.token);
       } catch (e) {
-        const m = e instanceof Error ? e.message : String(e);
-        if (m.includes("管理者権限")) setPhase("unauthorized");
-        else {
-          setMsg(m);
-          setPhase("error");
-        }
+        setMsg(e instanceof Error ? e.message : String(e));
+        setPhase("error");
       }
     })();
   }, []);

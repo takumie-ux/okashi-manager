@@ -44,3 +44,11 @@ export type AdminData = {
   unpaid: UnpaidRow[];
   history: HistoryRow[];
 };
+
+// 管理データ取得の結果。
+// 権限不足を例外ではなく戻り値で表す。Next.jsの本番ビルドではサーバー側で投げた
+// エラーメッセージがクライアントに渡らない（汎用メッセージとidentifierに置き換わる）ため、
+// メッセージ文字列では「権限がないのか、別の障害なのか」を画面側で判別できないため。
+export type AdminDataResult =
+  | { ok: true; data: AdminData }
+  | { ok: false; reason: "forbidden" };
