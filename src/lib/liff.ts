@@ -18,7 +18,12 @@ export async function initAuth(): Promise<AuthResult> {
   await liff.init({ liffId });
 
   if (!liff.isLoggedIn()) {
-    liff.login(); // LINEのログイン画面へリダイレクト（このあとページは遷移する）
+    // ログイン後に戻るURLを明示する。
+    // LIFF URLにパスを付けて開くと（例: liff.line.me/{id}/admin）、そのパスは
+    // liff.state クエリパラメータとして現在のURLに乗っている。redirectUri を
+    // 省略するとログインのリダイレクトでこれが失われ、ログイン後に liff.init() が
+    // 遷移先を復元できず、/admin を開いてもトップページに着地してしまう。
+    liff.login({ redirectUri: window.location.href });
     return new Promise<AuthResult>(() => {}); // 遷移するまで解決しない
   }
 
