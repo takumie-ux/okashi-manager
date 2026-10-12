@@ -35,6 +35,9 @@ export type HistoryRow = UnpaidRow & { status: "unpaid" | "paid" };
 
 export type AdminData = {
   products: Product[];
+  // 商品IDごとの累計販売数。購入履歴を数えなくても補充量を判断できるようにする。
+  // 購入記録を削除するとその分は差し引かれる。
+  soldByProduct: Record<string, number>;
   stats: {
     totalPaid: number;
     totalUnpaid: number;

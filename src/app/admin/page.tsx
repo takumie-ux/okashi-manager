@@ -7,6 +7,7 @@ import {
   addProduct,
   updateProduct,
   setPurchasePaid,
+  deletePurchase,
 } from "@/lib/admin-actions";
 import type { AdminData, Product } from "@/lib/types";
 
@@ -91,7 +92,13 @@ export default function AdminPage() {
         <AddProductForm token={token} onDone={reload} />
         <ul className="mt-3 flex flex-col gap-2">
           {data.products.map((p) => (
-            <ProductRow key={p.id} product={p} token={token} onDone={reload} />
+            <ProductRow
+              key={p.id}
+              product={p}
+              sold={data.soldByProduct[p.id] ?? 0}
+              token={token}
+              onDone={reload}
+            />
           ))}
         </ul>
       </section>
@@ -166,6 +173,30 @@ export default function AdminPage() {
                 ) : (
                   <span className="px-1.5 text-amber-600">未</span>
                 )}
+                <button
+                  onClick={async () => {
+                    const ok = window.confirm(
+                      `${h.userName} さんの ¥${h.amount} の記録を削除します。
+
+` +
+                        `在庫は戻りません。この商品の累計販売数からも差し引かれます。
+` +
+                        `元に戻せません。よろしいですか？`
+                    );
+                    if (!ok) return;
+                    try {
+                      await deletePurchase(token, h.purchaseId);
+                      reload();
+                    } catch (e) {
+                      setMsg(e instanceof Error ? e.message : String(e));
+                    }
+                  }}
+                  className="ml-1 px-1 text-xs text-gray-400"
+                  title="この購入記録を削除します（在庫は戻りません）"
+                  aria-label="購入記録を削除"
+                >
+                  ✕
+                </button>
               </li>
             ))}
           </ul>
@@ -276,10 +307,12 @@ function AddProductForm({
 
 function ProductRow({
   product,
+  sold,
   token,
   onDone,
 }: {
   product: Product;
+  sold: number;
   token: string;
   onDone: () => void;
 }) {
@@ -341,13 +374,18 @@ function ProductRow({
             <span className="ml-2 text-xs text-gray-500">（停止中）</span>
           )}
         </p>
-        <button
-          onClick={toggleActive}
-          disabled={busy}
-          className="text-xs text-gray-500 underline"
-        >
-          {product.is_active ? "販売停止" : "再開"}
-        </button>
+        <div className="flex items-center gap-3">
+          <span className="whitespace-nowrap text-xs text-gray-500">
+            累計 <span className="font-semibold text-gray-700 dark:text-gray-300">{sold}</span> 個
+          </span>
+          <button
+            onClick={toggleActive}
+            disabled={busy}
+            className="text-xs text-gray-500 underline"
+          >
+            {product.is_active ? "販売停止" : "再開"}
+          </button>
+        </div>
       </div>
       <div className="mt-2 flex items-end gap-2">
         <label className="flex-1 text-xs text-gray-500">

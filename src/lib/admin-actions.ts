@@ -22,8 +22,11 @@ export async function getAdminData(token: string): Promise<AdminDataResult> {
   }
   const supabase = createServerSupabase();
 
-  const [{ data: products, error: pe }, { data: purchases, error: qe }] =
-    await Promise.all([
+  const [
+    { data: products, error: pe },
+    { data: purchases, error: qe },
+    { data: items, error: ie },
+  ] = await Promise.all([
       supabase
         .from("products")
         .select("id, name, price, stock, image_url, is_active")
@@ -34,10 +37,19 @@ export async function getAdminData(token: string): Promise<AdminDataResult> {
         .from("purchases")
         .select("id, status, total_amount, created_at, user:users(display_name)")
         .order("created_at", { ascending: false }),
+      // 商品ごとの累計販売数を出すための明細。件数が多くないので全件取って集計する
+      supabase.from("purchase_items").select("product_id, quantity"),
     ]);
 
   if (pe) throw new Error(pe.message);
   if (qe) throw new Error(qe.message);
+  if (ie) throw new Error(ie.message);
+
+  const soldByProduct: Record<string, number> = {};
+  for (const it of items ?? []) {
+    const id = it.product_id as string;
+    soldByProduct[id] = (soldByProduct[id] ?? 0) + (it.quantity as number);
+  }
 
   let totalPaid = 0;
   let totalUnpaid = 0;
@@ -77,6 +89,7 @@ export async function getAdminData(token: string): Promise<AdminDataResult> {
     ok: true,
     data: {
       products: productList,
+      soldByProduct,
       stats: {
         totalPaid,
         totalUnpaid,
@@ -140,6 +153,22 @@ export async function updateProduct(
 
   const supabase = createServerSupabase();
   const { error } = await supabase.from("products").update(update).eq("id", id);
+  if (error) throw new Error(error.message);
+  return { ok: true };
+}
+
+/**
+ * 購入記録を削除する。記録を消すだけで在庫は戻さない。
+ * purchase_items は外部キーの ON DELETE CASCADE で一緒に消えるため、
+ * その商品の累計販売数からも差し引かれる。
+ */
+export async function deletePurchase(token: string, purchaseId: string) {
+  await requireAdmin(token);
+  const supabase = createServerSupabase();
+  const { error } = await supabase
+    .from("purchases")
+    .delete()
+    .eq("id", purchaseId);
   if (error) throw new Error(error.message);
   return { ok: true };
 }
